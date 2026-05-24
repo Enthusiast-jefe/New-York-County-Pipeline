@@ -1,0 +1,33 @@
+# ___Airflow ______________________________
+
+apache-airflow[postgres,http]==2.8.4
+
+#_____ Data Layer_____________________________
+
+pandas==2.2.2
+pyarrow==16.1.0 # to read/write parquet files
+duckdb==0.10.3  # To address eventual OOM problem
+
+# ____ HTTP + resilience_______________________
+
+requests==2.32.2
+tenacity==8.3.0 # retry decorator for API rate limits
+
+
+#____ Data quality_____________________________
+
+pandera==0.19.3 # data validation library
+rapidfuzz==3.9.3 # string matching library
+
+#____ Secret/Configuration______________________
+
+python-dotenv==1.0.1
+
+#____ Streamlit Dashboard____________________
+
+streamlit==1.35.0
+plotly==5.22.0
+
+#____Postgres__________________________________
+
+psycopg2-binary==2.9.9

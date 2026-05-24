@@ -1,0 +1,31 @@
+# ________Secrets__________________
+.env
+*.env
+
+#_____Local data layer_________
+
+data/raw/
+data/intermediate/
+data/logs/
+logs/
+
+#_____Airflow local state_______
+
+airflow.db # local SQLite database tracking your task history and metadata. Just as a fallback
+airflow.cfg # contains machine's unique system paths and configurations
+
+
+#_____Python_________
+
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+
+#___ OS_______
+.DS_Store
+Thumbs.db
+

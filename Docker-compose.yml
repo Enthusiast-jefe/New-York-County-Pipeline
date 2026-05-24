@@ -1,0 +1,132 @@
+# ============================================================
+# docker-compose.yml — New York County Pipeline
+# Services: postgres, airflow-init, airflow-webserver, airflow-scheduler
+# ============================================================
+
+version: '3.8'
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - .env
+  environment:
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
+    AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+    AIRFLOW__CORE__LOAD_EXAMPLES: ${AIRFLOW__CORE__LOAD_EXAMPLES}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
+  volumes:
+    # DAG code — live reload without rebuilding the image
+    - ./dags:/opt/airflow/dags
+
+    # ── Data layers (bind-mounted to your host machine) ───────
+    - ./data/raw:/opt/airflow/data/raw
+    - ./data/intermediate:/opt/airflow/data/intermediate
+    - ./data/curated:/opt/airflow/data/curated
+    - ./data/reference:/opt/airflow/data/reference
+    - ./data/logs:/opt/airflow/data/logs
+
+    # ── Local CSV source files (read-only) ────────────────────
+    # SOURCE_DIR is your host path (set in .env)
+    # Mounted as read-only — pipeline can read but never modify
+    - ${SOURCE_DIR}:/opt/airflow/data/sources:ro
+
+    # ── Airflow task logs ─────────────────────────────────────
+    - ./logs:/opt/airflow/logs
+
+    # ── Git config so Task 4 can commit and push ──────────────
+    - ~/.gitconfig:/home/airflow/.gitconfig:ro
+
+  depends_on:
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+
+
+services:
+
+  # ── Metadata database ──────────────────────────────────────
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── One-time DB migration + admin user creation ────────────
+  airflow-init:
+    <<: *airflow-common
+    command: >
+      bash -c "
+        airflow db migrate &&
+        airflow users create
+          --username admin
+          --password admin
+          --firstname Admin
+          --lastname User
+          --role Admin
+          --email admin@example.com
+      "
+    restart: "no"
+
+  # ── Web UI ─────────────────────────────────────────────────
+  airflow-webserver:
+    <<: *airflow-common
+    command: airflow webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── Scheduler ──────────────────────────────────────────────
+  airflow-scheduler:
+    <<: *airflow-common
+    command: airflow scheduler
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "$(hostname)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+
+volumes:
+  postgres_data:
+
+
+# ── Usage ─────────────────────────────────────────────────────
+# First run — create local directories and initialise DB:
+#   mkdir -p data/raw data/intermediate data/curated data/reference data/logs logs
+#   docker compose up airflow-init
+#
+# Start everything:
+#   docker compose up -d
+#
+# Open Airflow UI:
+#   http://localhost:8080  (admin / admin)
+#
+# Tail scheduler logs:
+#   docker compose logs -f airflow-scheduler
+#
+# Rebuild after changing requirements.txt or Dockerfile:
+#   docker compose build && docker compose up -d
+#
+# Stop (keeps data volumes):
+#   docker compose down
+#
+# Full reset including volumes:
+#   docker compose down -v
